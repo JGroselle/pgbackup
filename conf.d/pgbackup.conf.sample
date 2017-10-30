@@ -1,0 +1,33 @@
+# pgbackup configuration file
+
+#
+# Common parameters
+#
+
+# log file for script output
+MY_LOGFILE='/var/log/pgbackup.log'
+
+# Destination forleder for the backup files
+MY_PGSQL_DEST_DIR='/var/backups/pgsql'
+
+# Number of _days_ to keep backup files
+MY_BCKPDAYS='15'
+
+# Activate debug mode (default = off)
+MY_DEBUG=0
+
+#
+# Remote only parametters
+#
+
+# PostgreSQL instance port
+#PGPORT=5432
+
+# pgpass file
+#MY_PGPASS='~/.pgpass'
+
+# PostgreSQL backup role
+#PGUSER="backup_suro"
+
+# Database to connect
+#PGDATABASE='postgres'
