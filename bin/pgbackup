@@ -21,8 +21,25 @@ set -euo pipefail
 #
 
 # includes common
-[ -x /usr/local/include/bash_common.inc ] && source /usr/local/include/bash_common.inc ||
-  { echo "[ERR] Impossible to load bash_common.inc" ; exit 2 ; }
+if [ -x /usr/local/include/bash_common.inc ] ; then
+  source /usr/local/include/bash_common.inc
+else
+  echo "[ERR] Impossible to load bash_common.inc"
+  exit 2
+fi
+
+# Static Variables
+MY_TODAY=$(date +%Y%m%d)
+MY_BDD=''
+MY_REMOTE=0
+CONFIG_FILE='/etc/pgbackup.conf'
+
+# Source configuration file
+if [ -r "${CONFIG_FILE}" ] ; then
+  source ${CONFIG_FILE}
+else
+  f_notify -m "Cannot read configuration file: ${CONFIG_FILE}." -s -c 2 -e
+fi
 
 # Binaries
 declare -A BIN_ || f_notify -m "Impossible to define associative array. Maybe old bash version ?" -sf -c 2 -e
@@ -36,15 +53,6 @@ BIN_[MKDIR]=$(which mkdir)
 BIN_[PSQL]=$(which psql)
 BIN_[PGDUMP]=$(which pg_dump)
 BIN_[PGDUMPALL]=$(which pg_dumpall)
-
-# Static Variables
-MY_LOGFILE='/var/log/pgbackup.log'
-MY_PGSQL_DEST_DIR='/var/backups/pgsql'
-MY_TODAY=$(date +%Y%m%d)
-
-# Dynamic Variables
-MY_DEBUG=0
-MY_BCKPDAYS='5'
 
 # Functions
 function usage() {
