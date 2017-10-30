@@ -54,6 +54,7 @@ function usage() {
   echo ""
   echo "  $script_name -a                - Backup all database"
   echo "  $script_name -b database_name  - Backup a single database"
+  echo "  $script_name -r remote_name    - Backup a remote server"
   echo "  $script_name -h                - Print this help"
   echo ""
   exit 3
@@ -64,12 +65,26 @@ function backup_test() {
   (( $MY_DEBUG )) && debug Test position : $MY_TEST_POS
   case $MY_TEST_POS in
     "pre")
+      # Test BDD
+      [ -z "${MY_BDD}" ] && f_notify -m "You MUST specify a database. Use option -a or -b. $(usage)" -sf -c 2
       # Test user
-      [ "$LOGNAME" != "root" ] && f_notify -m "Script exeucuted with wrong user ($LOGNAME)" -sf -c 2 -e
-      # Test binaires existense
+      [ "$LOGNAME" != "root" -a "${MY_REMOTE}" -eq 0 ] && f_notify -m "Script exeucuted with wrong user ($LOGNAME)" -sf -c 2 -e
+      # Test binaries
       for binary in ${!BIN_[@]} ; do [[ ${BIN_[$binary]} ]] || f_notify -m "Binary \"$binary\" seems to be absent from the system" -sf -c 2 -e ; done
       # Test Backup folder
-      [ -d ${MY_PGSQL_DEST_DIR} ] || { ${BIN_[MKDIR]} -p ${MY_PGSQL_DEST_DIR} && chown postgres:postgres ${MY_PGSQL_DEST_DIR}; }
+      if (( "${MY_REMOTE}" )); then
+        [ -d ${MY_PGSQL_DEST_DIR} ] || ${BIN_[MKDIR]} -p ${MY_PGSQL_DEST_DIR}
+      else
+        [ -d ${MY_PGSQL_DEST_DIR} ] || { ${BIN_[MKDIR]} -p ${MY_PGSQL_DEST_DIR} && chown postgres:postgres ${MY_PGSQL_DEST_DIR}; }
+      fi
+      # Test remote server
+      if (( "${MY_REMOTE}" )); then
+        if (( $(${BIN_[NC]} -vz "${PGHOST}" "${PGPORT}" &> /dev/null ) )); then
+          f_notify -m "Test remote host failed." -sf -c 2 -e
+        fi
+        if ! [[ "$(eval stat ${MY_PGPASS})" ]]; then f_notify -m "No .pgpass file found" -sf -c 2 -e ; fi
+      fi
+      return 0
     ;;
     "in_delete")
       # test if target dir already exist
@@ -90,17 +105,25 @@ function backup_test() {
 function backup_pgsql_globals() {
   local DUMP="${1}"
   f_notify -m "Start backuping globals objects" -sf -c 0
-  su - postgres -c "${BIN_[PGDUMPALL]} --globals-only -f ${DUMP}"
+  if (( "${MY_REMOTE}" )) ; then
+    ${BIN_[PGDUMPALL]} -h ${PGHOST} -U ${PGUSER} -w --globals-only -f ${DUMP}
+  else
+    su - postgres -c "${BIN_[PGDUMPALL]} --globals-only -f ${DUMP}"
+  fi
   f_notify -m "Globals objects backuped" -sf -c 0
   return 0
 }
 
 function backup_pgsql(){
   local DATABASE="${1}"
-  f_notify -m "Start backuping database ${DATABASE}" -sf -c 0
   local MY_PGDUMPOPTS='-Fc'
-  su - postgres -c "${BIN_[PGDUMP]} ${MY_PGDUMPOPTS} ${DATABASE} > ${MY_TARGET_DUMP}"
-  [ ${?} != '0' ] && f_notify -m "Problem while backuping database ${DATABASE}" -sf -c 2 -e
+  f_notify -m "Start backuping database ${DATABASE}" -sf -c 0
+  if (( "${MY_REMOTE}" )) ; then
+    ${BIN_[PGDUMP]} -h ${PGHOST} -U ${PGUSER} -w ${MY_PGDUMPOPTS} -d ${DATABASE} > ${MY_TARGET_DUMP}
+  else
+    su - postgres -c "${BIN_[PGDUMP]} ${MY_PGDUMPOPTS} ${DATABASE} > ${MY_TARGET_DUMP}"
+  fi
+  [ "${?}" -ne 0 ] && f_notify -m "Problem while backuping database ${DATABASE}" -sf -c 2 -e
   f_notify -m "Database ${DATABASE} backuped" -sf -c 0
   return 0
 }
@@ -129,7 +152,7 @@ function backup_compress() {
 # Test arguments existance
 [ "${#}" -eq 0 ] && usage
 
-while getopts ":ahdb:" opt; do
+while getopts ":ahdb:r:" opt; do
   case ${opt} in
     h)
       usage
@@ -140,18 +163,24 @@ while getopts ":ahdb:" opt; do
       MY_BDD='all'
     ;;
     d)
+      (( ${MY_DEBUG} )) && debug -d was trigered
       MY_DEBUG=1
     ;;
     b)
-      (( ${MY_DEBUG} )) && debug -a was trigered
+      (( ${MY_DEBUG} )) && debug -b was trigered
       [ "${MY_BDD}" == 'all' ] && { f_notify -m 'You cannot use -a and -b options' -s -c 0 && usage ; }
       MY_BDD="${OPTARG}"
     ;;
+    r)
+      (( ${MY_DEBUG} )) && debug -r was trigered
+      MY_REMOTE=1
+      export PGHOST="${OPTARG}"
+    ;;
     :)
-      f_notify -m "Option -${OPTARG} requires an argument." -s -c 0 && usage 
+      f_notify -m "Option -${OPTARG} requires an argument." -s -c 0 && usage
     ;;
     \?)
-      f_notify -m "[ERROR] Invalid option -${OPTARG}" -s -c 0 && usage 
+      f_notify -m "[ERROR] Invalid option -${OPTARG}" -s -c 0 && usage
     ;;
   esac
 done
@@ -160,10 +189,18 @@ done
 backup_test 'pre'
 
 # Define database to backup
-if [ "${MY_BDD}" == 'all' ] ; then
-  LIST_BDD="$(su - postgres -c 'psql -tc "SELECT datname FROM pg_database WHERE datistemplate = false"')"
+if (( ${MY_REMOTE} )); then
+  if [ "${MY_BDD}" == 'all' ] ; then
+    LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datistemplate = false")"
+  else
+    LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false")"
+  fi
 else
-  LIST_BDD="$(su - postgres -c "SELECT datname FROM pg_database WHERE datname = \'${MY_BDD}\' AND datistemplate = false")"
+  if [ "${MY_BDD}" == 'all' ] ; then
+    LIST_BDD="$(su - postgres -c 'psql -tc "SELECT datname FROM pg_database WHERE datistemplate = false"')"
+  else
+    LIST_BDD="$(su - postgres -c "psql -tc \"SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false\"")"
+  fi
 fi
 
 [ -z "${LIST_BDD}" ] && f_notify -m "Database ${MY_BDD} does not exist" -s -c 2 -e
