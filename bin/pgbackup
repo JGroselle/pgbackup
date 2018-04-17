@@ -32,6 +32,7 @@ fi
 MY_TODAY=$(date +%Y%m%d)
 MY_BDD=''
 MY_REMOTE=0
+MY_KEYVALUE_OUTPUT='/tmp/pgbackup.out'
 CONFIG_FILE='/etc/pgbackup.conf'
 
 # Source configuration file
@@ -236,7 +237,8 @@ if [ "${MY_BDD}" == 'all' ] ; then
   backup_compress
 fi
 
-# Screen output if not 'all'
+# Specific output if not 'all'
 if [ "${MY_BDD}" != 'all' ] ; then
   f_notify -m "Dump: ${MY_TARGET_DUMP}" -s -c 0
+  echo "dump=${MY_TARGET_DUMP}" > ${MY_KEYVALUE_OUTPUT}
 fi
