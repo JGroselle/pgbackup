@@ -217,39 +217,46 @@ done
 # Primary tests
 backup_test 'pre'
 
-# Define database to backup
-if (( ${MY_REMOTE} )); then
-  if [ "${MY_BDD}" == 'all' ] ; then
-    LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datistemplate = false")"
-  else
-    LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false")"
-  fi
-else
-  if [ "${MY_BDD}" == 'all' ] ; then
-    LIST_BDD="$(su - postgres -c 'psql -tc "SELECT datname FROM pg_database WHERE datistemplate = false"')"
-  else
-    LIST_BDD="$(su - postgres -c "psql -tc \"SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false\"")"
-  fi
+# Run prune if requested
+if (( ${MY_PRUNE} )); then
+  backup_test 'in_prune'
+  prune "${MY_BCKPDAYS}"
+  (( ! ${MY_BACKUP} )) && exit 0
 fi
 
-[ -z "${LIST_BDD}" ] && f_notify -m "Database ${MY_BDD} does not exist" -s -c 2 -e
+# Run backup if requested
+if (( ${MY_BACKUP} )) ; then
+  # Test database
+  backup_test "database"
 
-# Run purge
-if [ "${MY_BDD}" == 'all' ] ; then
-  backup_test 'in_delete'
-  rm_old "${MY_BCKPDAYS}"
-fi
+  # Define database to backup
+  if (( ${MY_REMOTE} )); then
+    if [ "${MY_BDD}" == 'all' ] ; then
+      LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datistemplate = false")"
+    else
+      LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false")"
+    fi
+  else
+    if [ "${MY_BDD}" == 'all' ] ; then
+      LIST_BDD="$(su - postgres -c 'psql -tc "SELECT datname FROM pg_database WHERE datistemplate = false"')"
+    else
+      LIST_BDD="$(su - postgres -c "psql -tc \"SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false\"")"
+    fi
+  fi
 
-# Run backups
-for DATABASE in ${LIST_BDD} ; do
-  MY_TARGET_DUMP="${MY_PGSQL_DEST_DIR}/${MY_TODAY}-${DATABASE}.custom"
-  backup_test 'in_backup' "${MY_TARGET_DUMP}"
-  backup_pgsql "${DATABASE}"
-done
+  [ -z "${LIST_BDD}" ] && f_notify -m "Database ${MY_BDD} does not exist" -s -c 2 -e
 
-if [ "${MY_BDD}" == 'all' ] ; then
-  MY_TARGET_GLOBALS="${MY_PGSQL_DEST_DIR}/${MY_TODAY}-globals.sql"
-  backup_pgsql_globals ${MY_TARGET_GLOBALS}
+  # Run backups
+  for DATABASE in ${LIST_BDD} ; do
+    MY_TARGET_DUMP="${MY_PGSQL_DEST_DIR}/${MY_TODAY}-${DATABASE}.custom"
+    backup_test 'in_backup' "${MY_TARGET_DUMP}"
+    backup_pgsql "${DATABASE}"
+  done
+
+  if [ "${MY_BDD}" == 'all' ] ; then
+    MY_TARGET_GLOBALS="${MY_PGSQL_DEST_DIR}/${MY_TODAY}-globals.sql"
+    backup_pgsql_globals ${MY_TARGET_GLOBALS}
+  fi
 fi
 
 # Compress backups
