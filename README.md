@@ -15,12 +15,11 @@ Version not in that range MAY work but are not tested.
 
 My home made logger: f_notify
 
-## To Do
+## Release note
 
-- [x] New feature: remote backup
-- [x] New feature: configuration file
-- [ ] Add github project link to f_notify (bash_common)
-- [ ] Add an option to bypass usage of f_notify
+Semantic versioning is used to define version (https://semver.org/)
+
+https://github.com/JGroselle/pgbackup/blob/master/RELEASE_NOTE.md
 
 ## Getting started
 
