@@ -77,8 +77,6 @@ function backup_test() {
   (( $MY_DEBUG )) && debug Test position : $MY_TEST_POS
   case $MY_TEST_POS in
     "pre")
-      # Test BDD
-      [ -z "${MY_BDD}" ] && f_notify -m "You MUST specify a database. Use option -a or -b. $(usage)" -sf -c 2
       # Test user
       [ "$LOGNAME" != "root" -a "${MY_REMOTE}" -eq 0 ] && f_notify -m "Script exeucuted with wrong user ($LOGNAME)" -sf -c 2 -e
       # Test binaries
