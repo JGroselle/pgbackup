@@ -31,6 +31,8 @@ fi
 # Static Variables
 MY_TODAY=$(date +%Y%m%d)
 MY_BDD=''
+MY_PRUNE=0
+MY_BACKUP=0
 MY_REMOTE=0
 MY_KEYVALUE_OUTPUT='/tmp/pgbackup.out'
 CONFIG_FILE='/etc/pgbackup.conf'
@@ -95,9 +97,16 @@ function backup_test() {
       fi
       return 0
     ;;
-    "in_delete")
+    "database")
+      # Test BDD
+      [ -z "${MY_BDD}" ] && f_notify -m "You MUST specify a database. $(usage)" -sf -c 2
+      return 0
+    ;;
+    "in_prune")
       # test if target dir already exist
       [ -d "${MY_PGSQL_DEST_DIR}" ] || f_notify -m "No such file or directory (${MY_PGSQL_DEST_DIR})" -sf -c 2 -e
+      # test if retention day is an integer
+      [[ ${MY_BCKPDAYS} =~ ^-?[0-9]+$ ]] || f_notify -m "Prune parameter must be an integer" -sf -c 2 -e
       return 0
     ;;
     "in_backup")
@@ -137,10 +146,14 @@ function backup_pgsql(){
   return 0
 }
 
-function rm_old() {
+function prune() {
+  # input must be the number of retention days
   local RETENTION_DAYS=${1}
+
+  # check if something is in retention policy
   cd ${MY_PGSQL_DEST_DIR} && local CMD=$(${BIN_[FIND]} . -type f -mtime +${RETENTION_DAYS} | wc -l)
   [ "${CMD}" -eq 0 ] && return 0
+
   f_notify -m "Start deleting old backups (retention : ${RETENTION_DAYS} days)" -sf -c 0
   cd ${MY_PGSQL_DEST_DIR} && ${BIN_[FIND]} . -type f -mtime +${RETENTION_DAYS} -delete
   [ ${?} != '0' ] && f_notify -m "Problem while deleting old backups..." -sf -c 2 -e
@@ -161,7 +174,7 @@ function backup_compress() {
 # Test arguments existance
 [ "${#}" -eq 0 ] && usage
 
-while getopts ":ahdb:r:" opt; do
+while getopts ":ahdb:r:p:" opt; do
   case ${opt} in
     h)
       usage
@@ -170,6 +183,7 @@ while getopts ":ahdb:r:" opt; do
       (( ${MY_DEBUG} )) && debug -a was trigered
       [ -z "${MY_BDD}" ] || { f_notify -m 'You cannot use -a and -b options' -s -c 0 && usage ; }
       MY_BDD='all'
+      MY_BACKUP=1
     ;;
     d)
       (( ${MY_DEBUG} )) && debug -d was trigered
@@ -179,11 +193,18 @@ while getopts ":ahdb:r:" opt; do
       (( ${MY_DEBUG} )) && debug -b was trigered
       [ "${MY_BDD}" == 'all' ] && { f_notify -m 'You cannot use -a and -b options' -s -c 0 && usage ; }
       MY_BDD="${OPTARG}"
+      MY_BACKUP=1
     ;;
     r)
       (( ${MY_DEBUG} )) && debug -r was trigered
       MY_REMOTE=1
+      MY_BACKUP=1
       export PGHOST="${OPTARG}"
+    ;;
+    p)
+      (( ${MY_DEBUG} )) && debug -r was trigered
+      MY_PRUNE=1
+      MY_BCKPDAYS="${OPTARG}"
     ;;
     :)
       f_notify -m "Option -${OPTARG} requires an argument." -s -c 0 && usage
