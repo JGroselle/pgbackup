@@ -66,6 +66,7 @@ function usage() {
   echo "  $script_name -a                - Backup all database"
   echo "  $script_name -b database_name  - Backup a single database"
   echo "  $script_name -r remote_name    - Backup a remote server"
+  echo "  $script_name -p retention_day  - Remove old backups older than retention_day"
   echo "  $script_name -h                - Print this help"
   echo ""
   exit 3
