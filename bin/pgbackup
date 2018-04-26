@@ -31,6 +31,8 @@ fi
 # Static Variables
 MY_TODAY=$(date +%Y%m%d)
 MY_BDD=''
+MY_PRUNE=0
+MY_BACKUP=0
 MY_REMOTE=0
 MY_KEYVALUE_OUTPUT='/tmp/pgbackup.out'
 CONFIG_FILE='/etc/pgbackup.conf'
@@ -64,6 +66,7 @@ function usage() {
   echo "  $script_name -a                - Backup all database"
   echo "  $script_name -b database_name  - Backup a single database"
   echo "  $script_name -r remote_name    - Backup a remote server"
+  echo "  $script_name -p retention_day  - Remove old backups older than retention_day"
   echo "  $script_name -h                - Print this help"
   echo ""
   exit 3
@@ -74,8 +77,6 @@ function backup_test() {
   (( $MY_DEBUG )) && debug Test position : $MY_TEST_POS
   case $MY_TEST_POS in
     "pre")
-      # Test BDD
-      [ -z "${MY_BDD}" ] && f_notify -m "You MUST specify a database. Use option -a or -b. $(usage)" -sf -c 2
       # Test user
       [ "$LOGNAME" != "root" -a "${MY_REMOTE}" -eq 0 ] && f_notify -m "Script exeucuted with wrong user ($LOGNAME)" -sf -c 2 -e
       # Test binaries
@@ -95,9 +96,16 @@ function backup_test() {
       fi
       return 0
     ;;
-    "in_delete")
+    "database")
+      # Test BDD
+      [ -z "${MY_BDD}" ] && f_notify -m "You MUST specify a database. $(usage)" -sf -c 2
+      return 0
+    ;;
+    "in_prune")
       # test if target dir already exist
       [ -d "${MY_PGSQL_DEST_DIR}" ] || f_notify -m "No such file or directory (${MY_PGSQL_DEST_DIR})" -sf -c 2 -e
+      # test if retention day is an integer
+      [[ ${MY_BCKPDAYS} =~ ^-?[0-9]+$ ]] || f_notify -m "Prune parameter must be an integer" -sf -c 2 -e
       return 0
     ;;
     "in_backup")
@@ -137,10 +145,14 @@ function backup_pgsql(){
   return 0
 }
 
-function rm_old() {
+function prune() {
+  # input must be the number of retention days
   local RETENTION_DAYS=${1}
+
+  # check if something is in retention policy
   cd ${MY_PGSQL_DEST_DIR} && local CMD=$(${BIN_[FIND]} . -type f -mtime +${RETENTION_DAYS} | wc -l)
   [ "${CMD}" -eq 0 ] && return 0
+
   f_notify -m "Start deleting old backups (retention : ${RETENTION_DAYS} days)" -sf -c 0
   cd ${MY_PGSQL_DEST_DIR} && ${BIN_[FIND]} . -type f -mtime +${RETENTION_DAYS} -delete
   [ ${?} != '0' ] && f_notify -m "Problem while deleting old backups..." -sf -c 2 -e
@@ -161,7 +173,7 @@ function backup_compress() {
 # Test arguments existance
 [ "${#}" -eq 0 ] && usage
 
-while getopts ":ahdb:r:" opt; do
+while getopts ":ahdb:r:p:" opt; do
   case ${opt} in
     h)
       usage
@@ -170,6 +182,7 @@ while getopts ":ahdb:r:" opt; do
       (( ${MY_DEBUG} )) && debug -a was trigered
       [ -z "${MY_BDD}" ] || { f_notify -m 'You cannot use -a and -b options' -s -c 0 && usage ; }
       MY_BDD='all'
+      MY_BACKUP=1
     ;;
     d)
       (( ${MY_DEBUG} )) && debug -d was trigered
@@ -179,11 +192,18 @@ while getopts ":ahdb:r:" opt; do
       (( ${MY_DEBUG} )) && debug -b was trigered
       [ "${MY_BDD}" == 'all' ] && { f_notify -m 'You cannot use -a and -b options' -s -c 0 && usage ; }
       MY_BDD="${OPTARG}"
+      MY_BACKUP=1
     ;;
     r)
       (( ${MY_DEBUG} )) && debug -r was trigered
       MY_REMOTE=1
+      MY_BACKUP=1
       export PGHOST="${OPTARG}"
+    ;;
+    p)
+      (( ${MY_DEBUG} )) && debug -r was trigered
+      MY_PRUNE=1
+      MY_BCKPDAYS="${OPTARG}"
     ;;
     :)
       f_notify -m "Option -${OPTARG} requires an argument." -s -c 0 && usage
@@ -197,39 +217,46 @@ done
 # Primary tests
 backup_test 'pre'
 
-# Define database to backup
-if (( ${MY_REMOTE} )); then
-  if [ "${MY_BDD}" == 'all' ] ; then
-    LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datistemplate = false")"
-  else
-    LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false")"
-  fi
-else
-  if [ "${MY_BDD}" == 'all' ] ; then
-    LIST_BDD="$(su - postgres -c 'psql -tc "SELECT datname FROM pg_database WHERE datistemplate = false"')"
-  else
-    LIST_BDD="$(su - postgres -c "psql -tc \"SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false\"")"
-  fi
+# Run prune if requested
+if (( ${MY_PRUNE} )); then
+  backup_test 'in_prune'
+  prune "${MY_BCKPDAYS}"
+  (( ! ${MY_BACKUP} )) && exit 0
 fi
 
-[ -z "${LIST_BDD}" ] && f_notify -m "Database ${MY_BDD} does not exist" -s -c 2 -e
+# Run backup if requested
+if (( ${MY_BACKUP} )) ; then
+  # Test database
+  backup_test "database"
 
-# Run purge
-if [ "${MY_BDD}" == 'all' ] ; then
-  backup_test 'in_delete'
-  rm_old "${MY_BCKPDAYS}"
-fi
+  # Define database to backup
+  if (( ${MY_REMOTE} )); then
+    if [ "${MY_BDD}" == 'all' ] ; then
+      LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datistemplate = false")"
+    else
+      LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false")"
+    fi
+  else
+    if [ "${MY_BDD}" == 'all' ] ; then
+      LIST_BDD="$(su - postgres -c 'psql -tc "SELECT datname FROM pg_database WHERE datistemplate = false"')"
+    else
+      LIST_BDD="$(su - postgres -c "psql -tc \"SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false\"")"
+    fi
+  fi
 
-# Run backups
-for DATABASE in ${LIST_BDD} ; do
-  MY_TARGET_DUMP="${MY_PGSQL_DEST_DIR}/${MY_TODAY}-${DATABASE}.custom"
-  backup_test 'in_backup' "${MY_TARGET_DUMP}"
-  backup_pgsql "${DATABASE}"
-done
+  [ -z "${LIST_BDD}" ] && f_notify -m "Database ${MY_BDD} does not exist" -s -c 2 -e
 
-if [ "${MY_BDD}" == 'all' ] ; then
-  MY_TARGET_GLOBALS="${MY_PGSQL_DEST_DIR}/${MY_TODAY}-globals.sql"
-  backup_pgsql_globals ${MY_TARGET_GLOBALS}
+  # Run backups
+  for DATABASE in ${LIST_BDD} ; do
+    MY_TARGET_DUMP="${MY_PGSQL_DEST_DIR}/${MY_TODAY}-${DATABASE}.custom"
+    backup_test 'in_backup' "${MY_TARGET_DUMP}"
+    backup_pgsql "${DATABASE}"
+  done
+
+  if [ "${MY_BDD}" == 'all' ] ; then
+    MY_TARGET_GLOBALS="${MY_PGSQL_DEST_DIR}/${MY_TODAY}-globals.sql"
+    backup_pgsql_globals ${MY_TARGET_GLOBALS}
+  fi
 fi
 
 # Compress backups
