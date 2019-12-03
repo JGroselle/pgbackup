@@ -48,16 +48,16 @@ fi
 
 # Binaries
 declare -A BIN_ || f_notify -m "Impossible to define associative array. Maybe old bash version ?" -sf -c 2 -e
-BIN_[RM]=$(which rm)
-BIN_[NC]=$(which nc)
-BIN_[FIND]=$(which find)
-BIN_[GREP]=$(which grep)
-BIN_[AWK]=$(which awk)
-BIN_[XARGS]=$(which xargs)
-BIN_[MKDIR]=$(which mkdir)
-BIN_[PSQL]=$(which psql)
-BIN_[PGDUMP]=$(which pg_dump)
-BIN_[PGDUMPALL]=$(which pg_dumpall)
+BIN_[RM]=$(command -v rm)
+BIN_[NC]=$(command -v nc)
+BIN_[FIND]=$(command -v find)
+BIN_[GREP]=$(command -v grep)
+BIN_[AWK]=$(command -v awk)
+BIN_[XARGS]=$(command -v xargs)
+BIN_[MKDIR]=$(command -v mkdir)
+BIN_[PSQL]=$(command -v psql)
+BIN_[PGDUMP]=$(command -v pg_dump)
+BIN_[PGDUMPALL]=$(command -v pg_dumpall)
 
 # Functions
 function usage() {
