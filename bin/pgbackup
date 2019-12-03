@@ -153,7 +153,8 @@ function prune() {
   local RETENTION_DAYS=${1}
 
   # check if something is in retention policy
-  cd ${MY_PGSQL_DEST_DIR} && local CMD=$(${BIN_[FIND]} . -type f -mtime +${RETENTION_DAYS} | wc -l)
+  local CMD
+  cd "${MY_PGSQL_DEST_DIR}" && CMD=$(${BIN_[FIND]} . -type f -mtime +"${RETENTION_DAYS}" | wc -l)
   [ "${CMD}" -eq 0 ] && return 0
 
   f_notify -m "Start deleting old backups (retention : ${RETENTION_DAYS} days)" -sf -c 0
