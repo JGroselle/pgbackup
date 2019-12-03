@@ -61,7 +61,7 @@ BIN_[PGDUMPALL]=$(command -v pg_dumpall)
 
 # Functions
 function usage() {
-  script_name=$(basename $0)
+  script_name=$(basename "$0")
   echo ""
   echo "  $script_name usage:"
   echo ""
@@ -76,25 +76,25 @@ function usage() {
 
 function backup_test() {
   MY_TEST_POS="$1"
-  (( $MY_DEBUG )) && debug Test position : $MY_TEST_POS
+  (( "$MY_DEBUG" )) && debug Test position : "$MY_TEST_POS"
   case $MY_TEST_POS in
     "pre")
       # Test user
-      [ "$LOGNAME" != "root" -a "${MY_REMOTE}" -eq 0 ] && f_notify -m "Script exeucuted with wrong user ($LOGNAME)" -sf -c 2 -e
+      [ "$LOGNAME" != "root" ] && [ "${MY_REMOTE}" -eq 0 ] && f_notify -m "Script exeucuted with wrong user ($LOGNAME)" -sf -c 2 -e
       # Test binaries
-      for binary in ${!BIN_[@]} ; do [[ ${BIN_[$binary]} ]] || f_notify -m "Binary \"$binary\" seems to be absent from the system" -sf -c 2 -e ; done
+      for binary in "${!BIN_[@]}" ; do [[ ${BIN_[$binary]} ]] || f_notify -m "Binary \"$binary\" seems to be absent from the system" -sf -c 2 -e ; done
       # Test Backup folder
       if (( "${MY_REMOTE}" )); then
-        [ -d ${MY_PGSQL_DEST_DIR} ] || ${BIN_[MKDIR]} -p ${MY_PGSQL_DEST_DIR}
+        [ -d "${MY_PGSQL_DEST_DIR}" ] || ${BIN_[MKDIR]} -p "${MY_PGSQL_DEST_DIR}"
       else
-        [ -d ${MY_PGSQL_DEST_DIR} ] || { ${BIN_[MKDIR]} -p ${MY_PGSQL_DEST_DIR} && chown postgres:postgres ${MY_PGSQL_DEST_DIR}; }
+        [ -d "${MY_PGSQL_DEST_DIR}" ] || { ${BIN_[MKDIR]} -p "${MY_PGSQL_DEST_DIR}" && chown postgres:postgres "${MY_PGSQL_DEST_DIR}"; }
       fi
       # Test remote server
       if (( "${MY_REMOTE}" )); then
         if (( $(${BIN_[NC]} -vz "${PGHOST}" "${PGPORT}" &> /dev/null ) )); then
           f_notify -m "Test remote host failed." -sf -c 2 -e
         fi
-        if ! [[ "$(eval stat ${MY_PGPASS})" ]]; then f_notify -m "No .pgpass file found" -sf -c 2 -e ; fi
+        if ! [[ "$(eval stat "${MY_PGPASS}")" ]]; then f_notify -m "No .pgpass file found" -sf -c 2 -e ; fi
       fi
       return 0
     ;;
@@ -112,7 +112,7 @@ function backup_test() {
     ;;
     "in_backup")
       # Test if a backup already exist
-      [ -e "${MY_TARGET_DUMP}.gz" -o -e "${MY_TARGET_DUMP}" ] && {
+      [ -e "${MY_TARGET_DUMP}.gz" ] || [ -e "${MY_TARGET_DUMP}" ] && {
         f_notify -m "Today backup already exist, new one is generated" -sf -c 0
         MY_TARGET_DUMP="${MY_PGSQL_DEST_DIR}/$(date +%Y%m%d_%H%M)_${DATABASE}.custom"
        }
@@ -125,7 +125,7 @@ function backup_pgsql_globals() {
   local DUMP="${1}"
   f_notify -m "Start backuping globals objects" -sf -c 0
   if (( "${MY_REMOTE}" )) ; then
-    ${BIN_[PGDUMPALL]} -h ${PGHOST} -U ${PGUSER} -w --globals-only -f ${DUMP}
+    ${BIN_[PGDUMPALL]} -h "${PGHOST}" -U "${PGUSER}" -w --globals-only -f "${DUMP}"
   else
     su - postgres -c "${BIN_[PGDUMPALL]} --globals-only -f ${DUMP}"
   fi
@@ -138,7 +138,7 @@ function backup_pgsql(){
   local MY_PGDUMPOPTS='-Fc'
   f_notify -m "Start backuping database ${DATABASE}" -sf -c 0
   if (( "${MY_REMOTE}" )) ; then
-    ${BIN_[PGDUMP]} -h ${PGHOST} -U ${PGUSER} -w ${MY_PGDUMPOPTS} -d ${DATABASE} > ${MY_TARGET_DUMP}
+    ${BIN_[PGDUMP]} -h "${PGHOST}" -U "${PGUSER}" -w "${MY_PGDUMPOPTS}" -d "${DATABASE}" > "${MY_TARGET_DUMP}"
   else
     su - postgres -c "${BIN_[PGDUMP]} ${MY_PGDUMPOPTS} ${DATABASE} > ${MY_TARGET_DUMP}"
   fi
@@ -234,9 +234,9 @@ if (( ${MY_BACKUP} )) ; then
   # Define database to backup
   if (( ${MY_REMOTE} )); then
     if [ "${MY_BDD}" == 'all' ] ; then
-      LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datistemplate = false")"
+      LIST_BDD="$(psql -h "${PGHOST}" -U "${PGUSER}" -d "${PGDATABASE}" -w -tc "SELECT datname FROM pg_database WHERE datistemplate = false")"
     else
-      LIST_BDD="$(psql -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} -w -tc "SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false")"
+      LIST_BDD="$(psql -h "${PGHOST}" -U "${PGUSER}" -d "${PGDATABASE}" -w -tc "SELECT datname FROM pg_database WHERE datname = '${MY_BDD}' AND datistemplate = false")"
     fi
   else
     if [ "${MY_BDD}" == 'all' ] ; then
@@ -257,7 +257,7 @@ if (( ${MY_BACKUP} )) ; then
 
   if [ "${MY_BDD}" == 'all' ] ; then
     MY_TARGET_GLOBALS="${MY_PGSQL_DEST_DIR}/${MY_TODAY}-globals.sql"
-    backup_pgsql_globals ${MY_TARGET_GLOBALS}
+    backup_pgsql_globals "${MY_TARGET_GLOBALS}"
   fi
 fi
 
