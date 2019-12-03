@@ -158,16 +158,20 @@ function prune() {
   [ "${CMD}" -eq 0 ] && return 0
 
   f_notify -m "Start deleting old backups (retention : ${RETENTION_DAYS} days)" -sf -c 0
-  cd ${MY_PGSQL_DEST_DIR} && ${BIN_[FIND]} . -type f -mtime +${RETENTION_DAYS} -delete
-  [ ${?} != '0' ] && f_notify -m "Problem while deleting old backups..." -sf -c 2 -e
+  cd "${MY_PGSQL_DEST_DIR}" &&
+  if ! ${BIN_[FIND]} . -type f -mtime +"${RETENTION_DAYS}" -delete ; then
+    f_notify -m "Problem while deleting old backups..." -sf -c 2 -e
+  fi
   f_notify -m "Old backups deleted" -sf -c 0
   return 0
 }
 
 function backup_compress() {
   f_notify -m "Start compressing backups" -sf -c 0
-  cd ${MY_PGSQL_DEST_DIR} && ${BIN_[FIND]} . -name '*.sql' -type f -exec gzip {} +
-  [ ${?} != '0' ] && f_notify -m "Problem while compressing backups..." -sf -c 2 -e
+  cd "${MY_PGSQL_DEST_DIR}" &&
+  if ! ${BIN_[FIND]} . -name '*.sql' -type f -exec gzip {} + ; then
+    f_notify -m "Problem while compressing backups..." -sf -c 2 -e
+  fi
   f_notify -m "Backups compressed" -sf -c 0
   return 0
 }
