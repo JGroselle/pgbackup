@@ -22,6 +22,7 @@ set -euo pipefail
 
 # includes common
 if [ -x /usr/local/include/bash_common.inc ] ; then
+  # shellcheck source=/usr/local/include/bash_common.inc
   source /usr/local/include/bash_common.inc
 else
   echo "[ERR] Impossible to load bash_common.inc"
@@ -39,7 +40,8 @@ CONFIG_FILE='/etc/pgbackup.conf'
 
 # Source configuration file
 if [ -r "${CONFIG_FILE}" ] ; then
-  source ${CONFIG_FILE}
+  # shellcheck disable=SC1090
+  source "${CONFIG_FILE}"
 else
   f_notify -m "Cannot read configuration file: ${CONFIG_FILE}." -s -c 2 -e
 fi
