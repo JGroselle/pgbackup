@@ -142,6 +142,7 @@ function backup_pgsql(){
   else
     su - postgres -c "${BIN_[PGDUMP]} ${MY_PGDUMPOPTS} ${DATABASE} > ${MY_TARGET_DUMP}"
   fi
+  # shellcheck disable=SC2181
   [ "${?}" -ne 0 ] && f_notify -m "Problem while backuping database ${DATABASE}" -sf -c 2 -e
   f_notify -m "Database ${DATABASE} backuped" -sf -c 0
   return 0
